@@ -1,0 +1,126 @@
+#!/bin/bash
+
+
+###############################################################################
+#                                                                             #
+# author: Hugo Lopes Tavares <hltbra@gmail.com>                               #
+#                                                                             #
+# this script allows you to remove some python package created by setuptools  #
+# it removes from site-packages directory and from easy-install.pth           #
+# you can change the python library path and python version                   #
+#                                                                             #
+###############################################################################
+
+# ps: this script is at my /usr/bin
+#
+# example of usage:                                                           
+# hugo@hugo-desktop:~$ easy_uninstall pyFoo                                   
+#                                                                             
+# /usr/bin/easy_uninstall error: you have no access to modify /usr/lib/python2.4/site-packages/pyFoo-1dev-py2.4.egg
+# 
+# hugo@hugo-desktop:~$ sudo easy_uninstall pyFoo
+# 
+# Are you sure you want to remove "/usr/lib/python2.4/site-packages/pyFoo-1dev-py2.4.egg" and pyFoo-1dev-py2.4.egg from "/usr/lib/python2.4/site-packages/easy-install.pth"? (y/[n])
+# y
+# Removing /usr/lib/python2.4/site-packages/pyFoo-1dev-py2.4.egg ...
+# "/usr/lib/python2.4/site-packages/pyFoo-1dev-py2.4.egg" removed
+# 
+# Removing pyFoo-1dev-py2.4.egg from /usr/lib/python2.4/site-packages/easy-install.pth ...
+# "pyFoo-1dev-py2.4.egg" removed from /usr/lib/python2.4/site-packages/easy-install.pth
+# 
+# /usr/bin/easy_uninstall: Uninstalled
+# 
+# hugo@hugo-desktop:~$ 
+# 
+
+version=2.4 #default
+path=/usr/lib/python
+pth=easy-install.pth
+args=($@)
+
+function help() {
+    echo "-h                 -   show this message"
+    echo "  --help"
+    echo "-l                 -   your python libraries directory"
+    echo "  --library-dir    /usr/lib/python$version by default"
+    echo "-v                 -    your python version used to go to your site-packages directory"
+    echo "  --version          2.4 by default"
+    echo
+    echo "by default, the script is called to look for your package in"
+    echo "   /usr/lib/python$version/site-packages"
+    echo
+    echo "-v changes your python version,"
+    echo "-l changes your python libraries path,"
+    echo "-h show this help" 
+    echo
+    exit
+}
+
+function error() {
+    echo
+    printf "$0 error: $1\n"
+    echo
+    exit 1
+}
+
+function userOrGroupHasPermission() {
+    # receives as paramter file user and group
+    if [ ! "`stat -c %U $1 | grep $2`" -o "`stat -c %G $1 | grep $3`" ];then
+        return 1
+    fi
+}
+
+if [ $# -gt 2 ]; then
+    if [ "$2" = "-l" -o "$2" = "--library-dir" ]; then
+        path=$3
+        version=
+    elif [ "$2" = "-v" -o "$2" = "--version" ]; then
+        version=$3
+    else
+        help
+    fi
+fi
+
+if [ $# -eq 0 ]; then
+    help
+    exit
+fi
+
+path=$path$version
+package="`ls $path/site-packages | grep $1`"
+pkgpath=$path/site-packages/$package
+pthpath=$path/site-packages/$pth
+
+groups=`groups`
+user=`whoami`
+
+echo #just a new line
+
+test "$package" || error "'$1' isn't in your site-packages folder"
+userOrGroupHasPermission $pkgpath $user $groups || error "you have no access to modify $pkgpath"
+userOrGroupHasPermission $pthpath $user $groups || error "you have no access to modify $pthpath"
+test -d "$path" || error "your site-packages directory doesn't exists"
+test -a "$pkgpath" || error "your $pkgpath -- $package package doesn't exists"
+test -f "$pthpath" || error "your $pth file doesn't exists"
+grep $package $pthpath 1>/dev/null 2>&1 || error "there is no $package in your easy-instal.pth\n"\
+                                "-- forcing removal, trying to remove just the package --"
+
+echo "Are you sure you want to remove \"$pkgpath\" and $package from \"$pthpath\"? (y/[n])"
+read answer
+if [ ! "$answer" = "y" -o "$answer" = "ye" -o "$answer" = "yes" ]; then
+    echo "Going out..." 
+    exit
+fi
+
+echo "Removing $pkgpath ..." && rm -rf "$pkgpath" &&\
+    echo "\"$pkgpath\" removed" ||\
+    error "some error occurred while removing $pkgpath"
+
+printf "\nRemoving $package from $pthpath ...\n" && grep $package $pthpath 1>/dev/null 2>&1 &&\
+     echo "`grep -v "$package" "$pthpath"`" > $pthpath
+     echo "\"$package\" removed from $pthpath" ||\
+     error "some error occurred while removing $package from $pthpath"
+
+printf "\n$0: Uninstalled\n\n"
+
+exit 0
